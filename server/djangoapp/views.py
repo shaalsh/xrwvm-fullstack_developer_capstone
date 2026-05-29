@@ -31,11 +31,10 @@ def get_dealer_reviews(request, dealer_id):
 
         for review_detail in reviews:
             response = analyze_review_sentiments(review_detail['review'])
+            review_detail['sentiment'] = "neutral"
 
             if response and 'sentiment' in response:
                 review_detail['sentiment'] = response['sentiment']
-            else:
-                review_detail['sentiment'] = "neutral"
 
         return JsonResponse({"status": 200, "reviews": reviews})
 
@@ -54,11 +53,12 @@ def add_review(request):
         response = post_review(data)
         print(response)
         return JsonResponse({"status": 200})
-    except Exception as e:
-        print(e)
-        return JsonResponse({"status": 401, "message": "Error in posting review"})
-
-    return JsonResponse({"status": 403, "message": "Unauthorized"})
+    except Exception as error:
+        print(error)
+        return JsonResponse({
+            "status": 401,
+            "message": "Error in posting review"
+        })
 
 
 @csrf_exempt
@@ -81,3 +81,4 @@ def login(request):
         return JsonResponse({"status": "Failed"})
 
     return JsonResponse({"status": "Bad Request"})
+    
