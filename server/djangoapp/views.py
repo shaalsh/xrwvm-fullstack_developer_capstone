@@ -1,65 +1,83 @@
-# Uncomment the required imports before adding the code
-
-# from django.shortcuts import render
-# from django.http import HttpResponseRedirect, HttpResponse
-# from django.contrib.auth.models import User
-# from django.shortcuts import get_object_or_404, render, redirect
-# from django.contrib.auth import logout
-# from django.contrib import messages
-# from datetime import datetime
-
-from django.http import JsonResponse
-from django.contrib.auth import login, authenticate
-import logging
 import json
+from django.http import JsonResponse
+from django.contrib.auth import authenticate, login as auth_login
 from django.views.decorators.csrf import csrf_exempt
-# from .populate import initiate
+from .restapis import get_request, analyze_review_sentiments, post_review
 
 
-# Get an instance of a logger
-logger = logging.getLogger(__name__)
+def get_dealerships(request, state="All"):
+    if state == "All":
+        endpoint = "/fetchDealers"
+    else:
+        endpoint = "/fetchDealers/" + state
+
+    dealerships = get_request(endpoint)
+    return JsonResponse({"status": 200, "dealers": dealerships})
 
 
-# Create your views here.
+def get_dealer_details(request, dealer_id):
+    if dealer_id:
+        endpoint = "/fetchDealer/" + str(dealer_id)
+        dealership = get_request(endpoint)
+        return JsonResponse({"status": 200, "dealer": dealership})
 
-# Create a `login_request` view to handle sign in request
-@csrf_exempt
-def login_user(request):
-    # Get username and password from request.POST dictionary
+    return JsonResponse({"status": 400, "message": "Bad Request"})
+
+
+def get_dealer_reviews(request, dealer_id):
+    if dealer_id:
+        endpoint = "/fetchReviews/dealer/" + str(dealer_id)
+        reviews = get_request(endpoint)
+
+        for review_detail in reviews:
+            response = analyze_review_sentiments(review_detail['review'])
+
+            if response and 'sentiment' in response:
+                review_detail['sentiment'] = response['sentiment']
+            else:
+                review_detail['sentiment'] = "neutral"
+
+        return JsonResponse({"status": 200, "reviews": reviews})
+
+    return JsonResponse({"status": 400, "message": "Bad Request"})
+
+
+def get_cars(request):
+    cars = get_request("/fetchCars")
+    return JsonResponse({"status": 200, "cars": cars})
+
+
+def add_review(request):
     data = json.loads(request.body)
-    username = data['userName']
-    password = data['password']
-    # Try to check if provide credential can be authenticated
-    user = authenticate(username=username, password=password)
-    data = {"userName": username}
-    if user is not None:
-        # If user is valid, call login method to login current user
-        login(request, user)
-        data = {"userName": username, "status": "Authenticated"}
-    return JsonResponse(data)
 
-# Create a `logout_request` view to handle sign out request
-# def logout_request(request):
-# ...
+    try:
+        response = post_review(data)
+        print(response)
+        return JsonResponse({"status": 200})
+    except Exception as e:
+        print(e)
+        return JsonResponse({"status": 401, "message": "Error in posting review"})
 
-# Create a `registration` view to handle sign up request
-# @csrf_exempt
-# def registration(request):
-# ...
+    return JsonResponse({"status": 403, "message": "Unauthorized"})
 
-# # Update the `get_dealerships` view to render the index page with
-# a list of dealerships
-# def get_dealerships(request):
-# ...
 
-# Create a `get_dealer_reviews` view to render the reviews of a dealer
-# def get_dealer_reviews(request,dealer_id):
-# ...
+@csrf_exempt
+def login(request):
+    if request.method == "POST":
+        data = json.loads(request.body)
 
-# Create a `get_dealer_details` view to render the dealer details
-# def get_dealer_details(request, dealer_id):
-# ...
+        username = data.get("userName")
+        password = data.get("password")
 
-# Create a `add_review` view to submit a review
-# def add_review(request):
-# ...
+        user = authenticate(username=username, password=password)
+
+        if user is not None:
+            auth_login(request, user)
+            return JsonResponse({
+                "status": "Authenticated",
+                "userName": username
+            })
+
+        return JsonResponse({"status": "Failed"})
+
+    return JsonResponse({"status": "Bad Request"})
